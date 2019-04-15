@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"strings"
 
 	"golang.org/x/net/publicsuffix"
 )
@@ -34,10 +35,23 @@ func main() {
 		Jar: jar,
 	}
 
-	resp, err := client.PostForm("https://www.filmweb.pl/j_login", url.Values{
+	data := url.Values{
 		"j_username": {*u},
 		"j_password": {*p},
-	})
+	}
+
+	// data.Add("_login_redirect_url", "https://www.filmweb.pl/user/"+*u)
+	data.Add("_login_redirect_url", "https://www.filmweb.pl/Skazani.Na.Shawshank")
+
+	req, err := http.NewRequest("POST", "https://www.filmweb.pl/j_login", strings.NewReader(data.Encode()))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("User-Agent", "GOofy, curious but harmless bot 🐱‍🏍")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
 	}
