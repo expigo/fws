@@ -45,6 +45,7 @@ func main() {
 
 	// data.Add("_login_redirect_url", "https://www.filmweb.pl/user/"+*u)
 	data.Add("_login_redirect_url", "https://www.filmweb.pl/film/Nietykalni-2011-583390")
+	// data.Add("_login_redirect_url", "https://www.filmweb.pl/Skazani.Na.Shawshank")
 
 	req, err := http.NewRequest("POST", "https://www.filmweb.pl/j_login", strings.NewReader(data.Encode()))
 	if err != nil {
@@ -68,16 +69,18 @@ func main() {
 
 	doc, _ := goquery.NewDocumentFromResponse(resp)
 	htmlContent, _ := doc.Html()
-
-	userRating := regexp.MustCompile(`],{(.*?), l`)
-	match := userRating.FindStringSubmatch(htmlContent)
-	fmt.Println(match[1])
-
-	communityRating := regexp.MustCompile(`communityRateInfo:"(.*?)",communityRatingCountInfo:"(.*?) ocen"`)
-	match = communityRating.FindStringSubmatch(htmlContent)
-	fmt.Println(match[1], match[2])
-
 	io.Copy(out, strings.NewReader(htmlContent))
+
+	//  , ],{avg: 9.17, count: 43, limit: 4}] })
+	userRating := regexp.MustCompile(`],{avg: (.*?), count: (.*?),`)
+	userRatingRaw := userRating.FindStringSubmatch(htmlContent)
+	fmt.Println(userRatingRaw[1])
+	fmt.Println(userRatingRaw[2])
+
+	communityRating := regexp.MustCompile(`communityRateInfo:"(.*?)",communityRatingCountInfo:"(.*?) ocen."`)
+	communityRatingRaw := communityRating.FindStringSubmatch(htmlContent)
+	fmt.Println(communityRatingRaw[1])
+	fmt.Println(communityRatingRaw[2])
 
 	fmt.Print("Done 👍")
 
