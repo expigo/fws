@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -38,17 +40,17 @@ func main() {
 		Jar: jar,
 	}
 
-	data := url.Values{
+	formData := url.Values{
 		"j_username": {*u},
 		"j_password": {*p},
 	}
 
-	// data.Add("_login_redirect_url", "https://www.filmweb.pl/user/"+*u)
-	// data.Add("_login_redirect_url", "https://www.filmweb.pl/film/Nietykalni-2011-583390")
-	// data.Add("_login_redirect_url", "https://www.filmweb.pl/Skazani.Na.Shawshank")
-	data.Add("_login_redirect_url", "https://www.filmweb.pl/ranking/film")
+	// formData.Add("_login_redirect_url", "https://www.filmweb.pl/user/"+*u)
+	// formData.Add("_login_redirect_url", "https://www.filmweb.pl/film/Nietykalni-2011-583390")
+	// formData.Add("_login_redirect_url", "https://www.filmweb.pl/Skazani.Na.Shawshank")
+	formData.Add("_login_redirect_url", "https://www.filmweb.pl/ranking/film")
 
-	req, err := http.NewRequest("POST", "https://www.filmweb.pl/j_login", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", "https://www.filmweb.pl/j_login", strings.NewReader(formData.Encode()))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,54 +71,71 @@ func main() {
 	defer out.Close()
 
 	doc, _ := goquery.NewDocumentFromResponse(resp)
-	// doc.Find(".film").EachWithBreak(func(i int, s *goquery.Selection) bool {
-	// 	if i == 100 {
-	// 		return false
-	// 	} else {
-	// 		fmt.Println(s.Text())
-	// 		return true
-	// 	}
-	// })
-	// htmlContent, _ := doc.Html()
-	// io.Copy(out, strings.NewReader(htmlContent))
+
+	var ratings data
 
 	doc.Find(".filmPoster__filmLink").EachWithBreak(func(i int, s *goquery.Selection) bool {
 		if i == 100 {
 			return false
-		} else {
-			fmt.Println(s.Text())
-			href, exists := s.Attr("href")
-			if exists {
-				fmt.Println(href)
-				parse(href, &client)
-				fmt.Println("-----")
-			}
-			return true
 		}
+		href, exists := s.Attr("href")
+		if exists {
+			var mi = movieInfo{URL: href}
+			parse(href, &client, &mi)
+			ratings = append(ratings, mi)
+		}
+
+		return true
 	})
+
+	result, err := json.MarshalIndent(ratings, "", "    ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_ = ioutil.WriteFile("test.json", result, 0644)
 
 	fmt.Print("Done 👍")
 
 }
 
-func parse(url string, c *http.Client) {
-	//  , ],{avg: 9.17, count: 43, limit: 4}] })
+func parse(url string, c *http.Client, mi *movieInfo) {
 
 	resp, _ := c.Get("https://filmweb.pl" + url)
 	if resp.StatusCode == http.StatusOK {
+
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
 		bodyString := string(bodyBytes)
 
+		//  , ],{avg: 9.17, count: 43, limit: 4}] })
 		userRating := regexp.MustCompile(`],{avg: (.*?), count: (.*?),`)
 		userRatingRaw := userRating.FindStringSubmatch(bodyString)
-		fmt.Printf("%T %[1]v\n", userRatingRaw[1])
-		fmt.Println(userRatingRaw[2])
+		(*mi).Friends.Rating, _ = strconv.ParseFloat(userRatingRaw[1], 64)
+		(*mi).Friends.Count, _ = strconv.Atoi(userRatingRaw[2])
 
 		communityRating := regexp.MustCompile(`communityRateInfo:"(.*?)",communityRatingCountInfo:"(.*?) ocen[y]?"`)
 		communityRatingRaw := communityRating.FindStringSubmatch(bodyString)
-		fmt.Println(communityRatingRaw[1])
-		fmt.Println(communityRatingRaw[2])
+		(*mi).Community.Rating, _ = strconv.ParseFloat(strings.Replace(communityRatingRaw[1], ",", ".", -1), 64)
+		(*mi).Community.Count, _ = strconv.Atoi(strings.Join(strings.Fields(communityRatingRaw[2]), ""))
 	} else {
 		panic(":O")
 	}
 }
+
+type movieInfo struct {
+	URL       string
+	Friends   friendsRating
+	Community communityRating
+}
+
+type friendsRating struct {
+	Rating float64
+	Count  int
+}
+
+type communityRating struct {
+	Rating float64
+	Count  int
+}
+
+type data []movieInfo
